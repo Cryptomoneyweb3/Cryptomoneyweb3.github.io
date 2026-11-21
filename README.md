@@ -1,6 +1,10 @@
 # scamguard-ai.
 <!doctype html>
 <html lang="en">
+ <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+<script>
+  Pi.init({ version: "2.0" });
+</script>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
