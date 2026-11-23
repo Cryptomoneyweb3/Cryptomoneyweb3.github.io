@@ -64,10 +64,76 @@ function analyseMessage(txt){let score=0,items=[];const add=(n,t,d,s='warn')=>{s
 function analyseAddress(raw){const a=raw.trim();let items=[],score=0;if(!a)return {score:0,items:[finding('No address entered','Paste a public wallet or contract address.')]};const evm=/^0x[a-fA-F0-9]{40}$/.test(a),sol=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a),pi=/^G[A-Z2-7]{55}$/.test(a);if(evm||sol||pi){items.push(finding('Address format looks plausible',evm?'Matches a common 20-byte EVM address shape.':sol?'Matches a common Solana base58 address shape.':'Matches a Stellar-style public account identifier shape often associated with Pi.','good'));score=5;items.push(finding('On-chain reputation not checked','This prototype does not verify token contracts, transaction history, ownership, approvals, scam reports or whether the address belongs to the claimed project.','warn'))}else{score=55;items.push(finding('Address format not recognised','It does not match the basic EVM, Solana or Pi-style formats checked here. Confirm the network and copy the full public address.','bad'))}return {score,items}}
 function render(res){const score=Math.max(0,Math.min(100,res.score));$('score').textContent=score;let level=score>=80?'Critical risk':score>=61?'High risk':score>=41?'Suspicious':score>=21?'Moderate risk':'Low indicators detected';$('riskTitle').textContent=level;$('riskDesc').textContent=score>=61?'Do not connect a wallet, sign a message or send funds.':score>=41?'Pause and independently verify before taking action.':'No major warning pattern was detected by this limited check.';const col=score>=61?'var(--red)':score>=21?'var(--amber)':'var(--green)';$('scoreCircle').style.borderColor=col;$('findings').innerHTML=res.items.map(x=>`<div class="finding"><b><i class="dot ${x.severity==='bad'?'bad':x.severity==='good'?'good':'warn'}"></i>${escapeHtml(x.title)}</b><small>${escapeHtml(x.detail)}</small></div>`).join('');$('advice').textContent='Recommended next step: verify the domain or announcement using a bookmark or official channel you already trust. Never share your recovery phrase, private key or one-time password. A low score is not proof of safety.';$('result').classList.add('show');$('result').scrollIntoView({behavior:'smooth',block:'nearest'})}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-// Pi username sign-in (frontend prototype only; no server-side identity verification yet).
-const piLoginBtn=$('piLoginBtn'),piLoginStatus=$('piLoginStatus');
-function onIncompletePaymentFound(payment){console.warn('Pi SDK reported an incomplete payment.',payment)}
-piLoginBtn.addEventListener('click',async()=>{if(!window.Pi||typeof window.Pi.authenticate!=='function'){piLoginStatus.textContent='Pi sign-in is available inside the Pi Browser. Please open ScamGuard AI there.';return}piLoginBtn.disabled=true;piLoginBtn.textContent='CONNECTING TO PI...';piLoginStatus.textContent='Waiting for Pi approval...';try{const authResult=await window.Pi.authenticate(['username'],onIncompletePaymentFound);const username=authResult&&authResult.user&&authResult.user.username;if(!username)throw new Error('Pi did not return a username. Please try again.');piLoginStatus.textContent='Signed in as @'+username+' (frontend preview; server verification not yet enabled).';piLoginBtn.textContent='SIGNED IN WITH PI'}catch(error){console.error('Pi authentication failed:',error);piLoginStatus.textContent='Sign-in was not completed. '+(error&&error.message?error.message:'Please try again in Pi Browser.');piLoginBtn.textContent='π SIGN IN WITH PI';piLoginBtn.disabled=false}});
+// Pi sign-in with server-side identity verification.
+const PI_AUTH_API_URL = 'https://scamguard-ai-api.cryptomoneywebid.workers.dev/api/auth/verify';
+const piLoginBtn = $('piLoginBtn');
+const piLoginStatus = $('piLoginStatus');
+
+function onIncompletePaymentFound(payment) {
+  console.warn('Pi SDK reported an incomplete payment.', payment);
+}
+
+piLoginBtn.addEventListener('click', async () => {
+  if (!window.Pi || typeof window.Pi.authenticate !== 'function') {
+    piLoginStatus.textContent = 'Pi sign-in is available inside the Pi Browser. Please open ScamGuard AI there.';
+    return;
+  }
+
+  piLoginBtn.disabled = true;
+  piLoginBtn.textContent = 'CONNECTING TO PI...';
+  piLoginStatus.textContent = 'Waiting for Pi approval...';
+
+  try {
+    const authResult = await window.Pi.authenticate(
+      ['username'],
+      onIncompletePaymentFound
+    );
+
+    const accessToken = authResult && authResult.accessToken;
+    if (!accessToken) {
+      throw new Error('Pi did not return an access token. Please try again.');
+    }
+
+    piLoginStatus.textContent = 'Verifying your Pi account securely...';
+
+    const response = await fetch(PI_AUTH_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken })
+    });
+
+    let verification;
+    try {
+      verification = await response.json();
+    } catch {
+      throw new Error('The verification service returned an unreadable response.');
+    }
+
+    if (
+      !response.ok ||
+      !verification ||
+      verification.verified !== true ||
+      !verification.username ||
+      !verification.uid
+    ) {
+      throw new Error(
+        verification && verification.error
+          ? verification.error
+          : 'Server verification failed. Please try again.'
+      );
+    }
+
+    piLoginStatus.textContent = 'Verified Pi account: @' + verification.username;
+    piLoginBtn.textContent = 'VERIFIED WITH PI';
+  } catch (error) {
+    console.error('Pi sign-in or server verification failed:', error);
+    piLoginStatus.textContent =
+      'Sign-in was not verified. ' +
+      (error && error.message ? error.message : 'Please try again in Pi Browser.');
+    piLoginBtn.textContent = 'π SIGN IN WITH PI';
+    piLoginBtn.disabled = false;
+  }
+});
 $('scanBtn').addEventListener('click',()=>{let res;if(active==='link')res=analyseLink($('linkInput').value);if(active==='message')res=analyseMessage($('messageInput').value);if(active==='contract')res=analyseAddress($('contractInput').value);render(res)});
 </script>
 </body>
