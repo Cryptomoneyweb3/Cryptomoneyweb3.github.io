@@ -48,8 +48,8 @@ label{display:block;font-weight:700;margin:12px 0 7px}textarea,input{width:100%;
 <div id="messagePanel" class="hidden"><label for="messageInput">Airdrop announcement, P2P chat or suspicious message</label><textarea id="messageInput" placeholder="Paste the message here. Remove personal information first."></textarea><div class="hint">Never paste passwords, seed phrases, private keys or sensitive personal information.</div></div>
 <div id="contractPanel" class="hidden"><label for="contractInput">Wallet or smart contract address</label><textarea id="contractInput" placeholder="Paste an EVM, Solana or Pi-style public address"></textarea><div class="hint">MVP checks address format only. It does not query blockchain activity or audit contract code.</div></div>
 <button class="primary" id="scanBtn">SCAN FOR RED FLAGS</button>
-<div class="result" id="result" aria-live="polite"><div class="resultHead"><div class="score" id="scoreCircle"><div><span id="score">0</span><span>/100 RISK</span></div></div><div><div class="riskTitle" id="riskTitle">Assessment</div><div class="riskDesc" id="riskDesc"></div></div></div><div id="findings"></div><div class="notice" id="advice"></div></div>
-<div class="notice"><b>Privacy:</b> This prototype analyses the text you enter in your browser. It does not submit it to a server. Avoid entering secrets or personal data.</div>
+<div class="result" id="result" aria-live="polite"><div class="resultHead"><div class="score" id="scoreCircle"><div><span id="score">0</span><span>/100 RISK</span></div></div><div><div class="riskTitle" id="riskTitle">Assessment</div><div class="riskDesc" id="riskDesc"></div></div></div><div id="findings"></div><div class="notice" id="advice"></div><div class="notice hidden" id="threatIntelResult" role="status" aria-live="polite"></div></div>
+<div class="notice"><b>Privacy:</b> Message and address checks run in your browser. When you scan a link, the URL is also sent to ScamGuard AI’s backend for a URLhaus malware-threat lookup. Do not submit private or sensitive links.</div>
 </main>
 <section class="section"><h2>What this MVP checks</h2><div class="grid"><div class="mini">🔗 <strong>Suspicious links</strong><small>Lookalike domains, URL shorteners, credential-bait words and unsafe URL patterns.</small></div><div class="mini">🧠 <strong>Social engineering</strong><small>Urgency, guaranteed rewards, seed phrase requests and wallet-connection pressure.</small></div><div class="mini">🧾 <strong>Address format</strong><small>Basic public-address shape checks for common EVM, Solana and Pi-style formats.</small></div></div></section>
 <footer>ScamGuard AI · Early MVP · A risk assessment is not a security guarantee.</footer>
@@ -134,7 +134,84 @@ piLoginBtn.addEventListener('click', async () => {
     piLoginBtn.disabled = false;
   }
 });
-$('scanBtn').addEventListener('click',()=>{let res;if(active==='link')res=analyseLink($('linkInput').value);if(active==='message')res=analyseMessage($('messageInput').value);if(active==='contract')res=analyseAddress($('contractInput').value);render(res)});
+const URLHAUS_API_URL = 'https://scamguard-ai-api.cryptomoneywebid.workers.dev/api/threat/urlhaus';
+
+$('scanBtn').addEventListener('click', async () => {
+  const button = $('scanBtn');
+  const intelBox = $('threatIntelResult');
+  intelBox.classList.add('hidden');
+  intelBox.textContent = '';
+
+  if (active === 'link') {
+    const submittedUrl = $('linkInput').value.trim();
+    const res = analyseLink(submittedUrl);
+    render(res);
+    if (!submittedUrl) return;
+
+    button.disabled = true;
+    button.textContent = 'CHECKING URLHAUS...';
+    intelBox.classList.remove('hidden');
+    intelBox.textContent = 'Checking URLhaus malware intelligence...';
+
+    try {
+      const response = await fetch(URLHAUS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: submittedUrl })
+      });
+
+      let intelligence;
+      try {
+        intelligence = await response.json();
+      } catch {
+        throw new Error('Threat-intelligence service returned an unreadable response.');
+      }
+
+      if (!response.ok) {
+        throw new Error(intelligence && intelligence.error
+          ? intelligence.error
+          : 'Threat-intelligence lookup is unavailable.');
+      }
+
+      if (intelligence.status === 'listed') {
+        res.score = Math.min(100, Math.max(res.score, 75));
+        res.items.push(finding(
+          'URLhaus malware threat detected',
+          'URLhaus reports this URL as associated with malware distribution.' +
+            (intelligence.threat ? ' Threat: ' + intelligence.threat + '.' : '') +
+            (intelligence.url_status ? ' URL status: ' + intelligence.url_status + '.' : '') +
+            (intelligence.date_added ? ' Reported: ' + intelligence.date_added + '.' : ''),
+          'bad'
+        ));
+        render(res);
+        intelBox.textContent = 'THREAT DETECTED — URLhaus has a malware-related report for this URL. Do not visit it or connect a wallet.';
+      } else if (intelligence.status === 'not_listed') {
+        res.items.push(finding(
+          'No URLhaus match returned',
+          'URLhaus did not return a known malware-URL match. This does not prove the URL is safe.',
+          'warn'
+        ));
+        render(res);
+        intelBox.textContent = 'NO URLHAUS MATCH — This is not a safety certification. Continue checking the domain and source independently.';
+      } else {
+        throw new Error('Threat-intelligence service returned an unexpected result.');
+      }
+    } catch (error) {
+      intelBox.textContent = 'LIVE THREAT CHECK UNAVAILABLE — ' +
+        (error && error.message ? error.message : 'Please try again later.') +
+        ' Your local URL assessment is still shown above.';
+    } finally {
+      button.disabled = false;
+      button.textContent = 'SCAN FOR RED FLAGS';
+    }
+    return;
+  }
+
+  const res = active === 'message'
+    ? analyseMessage($('messageInput').value)
+    : analyseAddress($('contractInput').value);
+  render(res);
+});
 </script>
 </body>
 </html>
