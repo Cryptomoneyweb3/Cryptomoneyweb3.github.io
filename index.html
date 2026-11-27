@@ -78,7 +78,7 @@ function analyseMessage(txt){
   }
 
   const patterns=[
-    [/send (me |us )?(your )?(pi|btc|eth|crypto)|deposit.*(unlock|claim|release)|pay.*(gas|fee|tax).*claim/,'Payment demanded to release a reward',25,'Upfront payment requests for free rewards are a common scam pattern.','bad'],
+    [/(?:\b(?:pay|send|transfer|deposit|submit)\b.{0,80}\b(?:activation|verification|gas|network|processing|withdrawal|claim|release|service|registration)?\s*(?:fee|fees|charge|charges|deposit|tax)\b|\b(?:activation|verification|gas|network|processing|withdrawal|claim|release|service|registration)\s*(?:fee|fees|charge|charges|deposit|tax)\b.{0,80}\b(?:claim|receive|unlock|release|withdraw|access)\b|\b(?:fee|deposit|tax)\b.{0,45}\b(?:required|must be paid|to claim|to receive|to unlock|before withdrawal)\b)/,'Upfront fee or deposit demanded',30,'A request to pay an activation, verification, gas, processing or other fee before receiving or withdrawing a reward is a major scam warning. Do not send funds to claim a supposed free reward.','bad'],
     [/guaranteed (profit|return|income)|double your|100% profit|risk.?free profit/,'Guaranteed investment returns',20,'No legitimate crypto investment can guarantee profits.','bad'],
     [/urgent|act now|limited time|expires today|expires? (in|after) \d+\s*(seconds?|minutes?|hours?)|offer ends|last chance|within \d+ minutes/,'Artificial urgency',15,'Pressure to act quickly can stop you from verifying an offer independently.'],
     [/connect your wallet|wallet connection required|verify your wallet|sync your wallet/,'Wallet connection pressure',15,'Unexpected wallet connection requests can lead to malicious approvals or signature requests.'],
