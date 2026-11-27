@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#07111f">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://sdk.minepi.com 'sha256-1r0fpzkm4nfDfan99RaS7rXBB8vi53JdSA7kzoJl6KQ='; style-src 'self' 'unsafe-inline'; connect-src 'self' https://socialchain.app https://backend.appstudio-u7cm9zhmha0ruwv8.piappengine.com https://scamguard-ai-api.cryptomoneywebid.workers.dev; img-src 'self' data: https:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="description" content="ScamGuard AI helps Web3 users inspect suspicious links, messages and wallet addresses.">
 <title>ScamGuard AI — Web3 Safety Checker</title>
 <style>
@@ -20,6 +19,14 @@ label{display:block;font-weight:700;margin:12px 0 7px}textarea,input{width:100%;
 @media(max-width:620px){.wrap{padding:16px 12px 36px}.card{padding:14px}.grid{grid-template-columns:1fr}.pill{font-size:10px}.hero{padding-top:10px}.tabs{gap:5px}.tab{font-size:12px}}
 </style>
 <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+<script>
+  // Hosted Testnet app: use the normal Pi Browser authentication flow, not Sandbox mode.
+  window.addEventListener('DOMContentLoaded', function () {
+    if (window.Pi && typeof window.Pi.init === 'function') {
+      window.Pi.init({ version: '2.0', sandbox: false });
+    }
+  });
+</script>
 </head>
 <body>
 <div class="wrap">
@@ -42,7 +49,7 @@ label{display:block;font-weight:700;margin:12px 0 7px}textarea,input{width:100%;
 <div id="contractPanel" class="hidden"><label for="contractInput">Wallet or smart contract address</label><textarea id="contractInput" placeholder="Paste an EVM, Solana or Pi-style public address"></textarea><div class="hint">MVP checks address format only. It does not query blockchain activity or audit contract code.</div></div>
 <button class="primary" id="scanBtn">SCAN FOR RED FLAGS</button>
 <div class="result" id="result" aria-live="polite"><div class="resultHead"><div class="score" id="scoreCircle"><div><span id="score">0</span><span>/100 RISK</span></div></div><div><div class="riskTitle" id="riskTitle">Assessment</div><div class="riskDesc" id="riskDesc"></div></div></div><div id="findings"></div><div class="notice" id="advice"></div><div class="notice hidden" id="threatIntelResult" role="status" aria-live="polite"></div></div>
-<div class="notice"><b>Privacy:</b> Message and public-address checks run in your browser. When you scan a link, its URL is sent to ScamGuard AI’s backend for a URLhaus malware-threat lookup. Do not submit private, password-protected or sensitive URLs. A URLhaus no-match is not proof that a site is safe.</div>
+<div class="notice"><b>Privacy:</b> Message and address checks run in your browser. When you scan a link, the URL is also sent to ScamGuard AI’s backend for a URLhaus malware-threat lookup. Do not submit private or sensitive links.</div>
 </main>
 <section class="section"><h2>What this MVP checks</h2><div class="grid"><div class="mini">🔗 <strong>Suspicious links</strong><small>Lookalike domains, URL shorteners, credential-bait words and unsafe URL patterns.</small></div><div class="mini">🧠 <strong>Social engineering</strong><small>Urgency, guaranteed rewards, seed phrase requests and wallet-connection pressure.</small></div><div class="mini">🧾 <strong>Address format</strong><small>Basic public-address shape checks for common EVM, Solana and Pi-style formats.</small></div></div></section>
 <footer>ScamGuard AI · Early MVP · A risk assessment is not a security guarantee.</footer>
@@ -57,82 +64,69 @@ function analyseMessage(txt){let score=0,items=[];const add=(n,t,d,s='warn')=>{s
 function analyseAddress(raw){const a=raw.trim();let items=[],score=0;if(!a)return {score:0,items:[finding('No address entered','Paste a public wallet or contract address.')]};const evm=/^0x[a-fA-F0-9]{40}$/.test(a),sol=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a),pi=/^G[A-Z2-7]{55}$/.test(a);if(evm||sol||pi){items.push(finding('Address format looks plausible',evm?'Matches a common 20-byte EVM address shape.':sol?'Matches a common Solana base58 address shape.':'Matches a Stellar-style public account identifier shape often associated with Pi.','good'));score=5;items.push(finding('On-chain reputation not checked','This prototype does not verify token contracts, transaction history, ownership, approvals, scam reports or whether the address belongs to the claimed project.','warn'))}else{score=55;items.push(finding('Address format not recognised','It does not match the basic EVM, Solana or Pi-style formats checked here. Confirm the network and copy the full public address.','bad'))}return {score,items}}
 function render(res){const score=Math.max(0,Math.min(100,res.score));$('score').textContent=score;let level=score>=80?'Critical risk':score>=61?'High risk':score>=41?'Suspicious':score>=21?'Moderate risk':'Low indicators detected';$('riskTitle').textContent=level;$('riskDesc').textContent=score>=61?'Do not connect a wallet, sign a message or send funds.':score>=41?'Pause and independently verify before taking action.':'No major warning pattern was detected by this limited check.';const col=score>=61?'var(--red)':score>=21?'var(--amber)':'var(--green)';$('scoreCircle').style.borderColor=col;$('findings').innerHTML=res.items.map(x=>`<div class="finding"><b><i class="dot ${x.severity==='bad'?'bad':x.severity==='good'?'good':'warn'}"></i>${escapeHtml(x.title)}</b><small>${escapeHtml(x.detail)}</small></div>`).join('');$('advice').textContent='Recommended next step: verify the domain or announcement using a bookmark or official channel you already trust. Never share your recovery phrase, private key or one-time password. A low score is not proof of safety.';$('result').classList.add('show');$('result').scrollIntoView({behavior:'smooth',block:'nearest'})}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-// Pi authentication: initialize SDK, authenticate, then exchange the access token with App Studio.
-const APP_STUDIO_LOGIN_URL = 'https://backend.appstudio-u7cm9zhmha0ruwv8.piappengine.com/pi/auth/v1/login';
+// Pi sign-in with server-side identity verification.
+const PI_AUTH_API_URL = 'https://scamguard-ai-api.cryptomoneywebid.workers.dev/api/auth/verify';
 const piLoginBtn = $('piLoginBtn');
 const piLoginStatus = $('piLoginStatus');
-
-// Keep session credentials in memory only. Never persist them in localStorage/sessionStorage.
-let piSessionToken = null;
-let verifiedPiUser = null;
-let piSdkInitialized = false;
 
 function onIncompletePaymentFound(payment) {
   console.warn('Pi SDK reported an incomplete payment.', payment);
 }
 
 piLoginBtn.addEventListener('click', async () => {
-  if (!window.Pi || typeof window.Pi.init !== 'function' || typeof window.Pi.authenticate !== 'function') {
+  if (!window.Pi || typeof window.Pi.authenticate !== 'function') {
     piLoginStatus.textContent = 'Pi sign-in is available inside the Pi Browser. Please open ScamGuard AI there.';
     return;
   }
 
   piLoginBtn.disabled = true;
   piLoginBtn.textContent = 'CONNECTING TO PI...';
-  piLoginStatus.textContent = 'Preparing secure Pi sign-in...';
+  piLoginStatus.textContent = 'Waiting for Pi approval...';
 
   try {
-    if (!piSdkInitialized) {
-      await window.Pi.init({ version: '2.0' });
-      piSdkInitialized = true;
-    }
+    const authResult = await window.Pi.authenticate(
+      ['username'],
+      onIncompletePaymentFound
+    );
 
-    piLoginStatus.textContent = 'Waiting for Pi approval...';
-    const authResult = await window.Pi.authenticate(['username'], onIncompletePaymentFound);
     const accessToken = authResult && authResult.accessToken;
-
     if (!accessToken) {
       throw new Error('Pi did not return an access token. Please try again.');
     }
 
-    piLoginStatus.textContent = 'Verifying your account with App Studio...';
+    piLoginStatus.textContent = 'Verifying your Pi account securely...';
 
-    // This is the only identity exchange. Browser-supplied uid/username are deliberately ignored.
-    const response = await fetch(APP_STUDIO_LOGIN_URL, {
+    const response = await fetch(PI_AUTH_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ accessToken })
     });
 
-    let loginResult;
+    let verification;
     try {
-      loginResult = await response.json();
+      verification = await response.json();
     } catch {
-      throw new Error('App Studio returned an unreadable response.');
+      throw new Error('The verification service returned an unreadable response.');
     }
 
-    if (!response.ok || !loginResult || !loginResult.sessionToken ||
-        !loginResult.user || !loginResult.user.uid || !loginResult.user.username) {
+    if (
+      !response.ok ||
+      !verification ||
+      verification.verified !== true ||
+      !verification.username ||
+      !verification.uid
+    ) {
       throw new Error(
-        loginResult && loginResult.error
-          ? loginResult.error
-          : 'App Studio could not verify this Pi account. Please try again.'
+        verification && verification.error
+          ? verification.error
+          : 'Server verification failed. Please try again.'
       );
     }
 
-    // Only the identity returned by App Studio is trusted.
-    piSessionToken = loginResult.sessionToken;
-    verifiedPiUser = {
-      uid: loginResult.user.uid,
-      username: loginResult.user.username
-    };
-
-    piLoginStatus.textContent = 'Verified Pi account: @' + verifiedPiUser.username;
+    piLoginStatus.textContent = 'Verified Pi account: @' + verification.username;
     piLoginBtn.textContent = 'VERIFIED WITH PI';
   } catch (error) {
-    console.error('Pi sign-in failed:', error);
-    piSessionToken = null;
-    verifiedPiUser = null;
+    console.error('Pi sign-in or server verification failed:', error);
     piLoginStatus.textContent =
       'Sign-in was not verified. ' +
       (error && error.message ? error.message : 'Please try again in Pi Browser.');
@@ -141,20 +135,23 @@ piLoginBtn.addEventListener('click', async () => {
   }
 });
 const URLHAUS_API_URL = 'https://scamguard-ai-api.cryptomoneywebid.workers.dev/api/threat/urlhaus';
+
 $('scanBtn').addEventListener('click', async () => {
-  const scanBtn = $('scanBtn');
-  const threatBox = $('threatIntelResult');
-  threatBox.classList.add('hidden');
-  let res;
+  const button = $('scanBtn');
+  const intelBox = $('threatIntelResult');
+  intelBox.classList.add('hidden');
+  intelBox.textContent = '';
 
   if (active === 'link') {
     const submittedUrl = $('linkInput').value.trim();
-    res = analyseLink(submittedUrl);
+    const res = analyseLink(submittedUrl);
     render(res);
-
     if (!submittedUrl) return;
-    scanBtn.disabled = true;
-    scanBtn.textContent = 'CHECKING THREAT INTELLIGENCE...';
+
+    button.disabled = true;
+    button.textContent = 'CHECKING URLHAUS...';
+    intelBox.classList.remove('hidden');
+    intelBox.textContent = 'Checking URLhaus malware intelligence...';
 
     try {
       const response = await fetch(URLHAUS_API_URL, {
@@ -162,40 +159,57 @@ $('scanBtn').addEventListener('click', async () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: submittedUrl })
       });
-      const result = await response.json();
 
-      if (!response.ok) {
-        throw new Error(result && result.error ? result.error : 'Threat lookup unavailable.');
+      let intelligence;
+      try {
+        intelligence = await response.json();
+      } catch {
+        throw new Error('Threat-intelligence service returned an unreadable response.');
       }
 
-      if (result.status === 'listed') {
-        res.score = Math.max(res.score, 75);
+      if (!response.ok) {
+        throw new Error(intelligence && intelligence.error
+          ? intelligence.error
+          : 'Threat-intelligence lookup is unavailable.');
+      }
+
+      if (intelligence.status === 'listed') {
+        res.score = Math.min(100, Math.max(res.score, 75));
         res.items.push(finding(
           'URLhaus malware threat detected',
-          'URLhaus reports this URL as associated with malware distribution. Do not visit it or download files from it.',
+          'URLhaus reports this URL as associated with malware distribution.' +
+            (intelligence.threat ? ' Threat: ' + intelligence.threat + '.' : '') +
+            (intelligence.url_status ? ' URL status: ' + intelligence.url_status + '.' : '') +
+            (intelligence.date_added ? ' Reported: ' + intelligence.date_added + '.' : ''),
           'bad'
         ));
         render(res);
-        threatBox.textContent = 'THREAT DETECTED — URLhaus has a malware-related listing for this URL.';
-      } else if (result.status === 'not_listed') {
-        threatBox.textContent = 'NO URLHAUS MATCH — No listing was returned. This does not prove the website is safe or legitimate.';
+        intelBox.textContent = 'THREAT DETECTED — URLhaus has a malware-related report for this URL. Do not visit it or connect a wallet.';
+      } else if (intelligence.status === 'not_listed') {
+        res.items.push(finding(
+          'No URLhaus match returned',
+          'URLhaus did not return a known malware-URL match. This does not prove the URL is safe.',
+          'warn'
+        ));
+        render(res);
+        intelBox.textContent = 'NO URLHAUS MATCH — This is not a safety certification. Continue checking the domain and source independently.';
       } else {
-        throw new Error('The threat service returned an unrecognised result.');
+        throw new Error('Threat-intelligence service returned an unexpected result.');
       }
-      threatBox.classList.remove('hidden');
     } catch (error) {
-      threatBox.textContent = 'LIVE THREAT CHECK UNAVAILABLE — ' +
-        (error && error.message ? error.message : 'The local assessment is still shown.');
-      threatBox.classList.remove('hidden');
+      intelBox.textContent = 'LIVE THREAT CHECK UNAVAILABLE — ' +
+        (error && error.message ? error.message : 'Please try again later.') +
+        ' Your local URL assessment is still shown above.';
     } finally {
-      scanBtn.disabled = false;
-      scanBtn.textContent = 'SCAN FOR RED FLAGS';
+      button.disabled = false;
+      button.textContent = 'SCAN FOR RED FLAGS';
     }
     return;
   }
 
-  if (active === 'message') res = analyseMessage($('messageInput').value);
-  if (active === 'contract') res = analyseAddress($('contractInput').value);
+  const res = active === 'message'
+    ? analyseMessage($('messageInput').value)
+    : analyseAddress($('contractInput').value);
   render(res);
 });
 </script>
